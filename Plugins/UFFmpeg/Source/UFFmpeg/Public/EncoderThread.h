@@ -51,5 +51,7 @@ private:
 	UCircleQueue* audio_queue;
 	UCircleQueue* audio_time_queue;
 
+	int counter = 0;
+
 	uint8* video_data=nullptr;
 };

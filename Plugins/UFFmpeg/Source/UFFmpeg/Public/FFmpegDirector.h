@@ -43,8 +43,10 @@ public:
 
 	UFFmpegDirector();
 	virtual ~UFFmpegDirector();
-	UFUNCTION(BlueprintCallable)
+
+	UFUNCTION(BlueprintCallable, Category = "FFmpeg")
 	void Initialize_Director(UWorld* World, int32 VideoLength, FString OutFileName, bool UseGPU,FString VideoFilter,int VideoFps, int VideoBitRate, float AudioDelay,float SoundVolume);
+
 	void Begin_Receive_AudioData(UWorld* world);
 	void Begin_Receive_VideoData();
 
@@ -107,6 +109,8 @@ private:
 	uint32 out_width;
 	uint32 out_height;
 
+	uint32 finishVideocounter = 0;
+	uint32 finishAudiocounter = 0;
 
 	FTexture2DRHIRef GameTexture;
 

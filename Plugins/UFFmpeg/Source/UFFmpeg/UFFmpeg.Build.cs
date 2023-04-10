@@ -25,7 +25,7 @@ public class UFFmpeg : ModuleRules
         {
 
             string PlatformString = (Target.Platform == UnrealTargetPlatform.Win64) ? "x64" : "Win32";
-            string LibrariesPath = Path.Combine(Path.Combine(Path.Combine(ThirdPartyPath, "ffmpeg", "lib"), "vs"), PlatformString);    
+            string LibrariesPath = Path.Combine(Path.Combine(Path.Combine(ThirdPartyPath, "ffmpeg", "lib"), "vs"), PlatformString);
 
             PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "avcodec.lib"));
             PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "avdevice.lib"));
@@ -60,8 +60,27 @@ public class UFFmpeg : ModuleRules
             }
 
         }
-        // Include path
-        PublicIncludePaths.Add(Path.Combine(ThirdPartyPath, "ffmpeg", "include"));
+        if (Target.Platform == UnrealTargetPlatform.Linux)
+        {
+            string LibrariesPath = Path.Combine(Path.Combine(ThirdPartyPath, "ffmpeg", "lib"), "amd64");
+
+            System.Console.WriteLine("... LibrariesPath -> " + LibrariesPath);
+
+            string[] libs = { "libavcodec.a", "libavdevice.a", "libavfilter.a", "libavformat.a", "libavutil.a", "libswresample.a", "libswscale.a", "libpostproc.a" };
+            foreach (string lib in libs)
+            {
+                PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, lib));
+                RuntimeDependencies.Add(Path.Combine(LibrariesPath, lib), StagedFileType.NonUFS);
+            }
+
+            // Include path Linux
+            PublicIncludePaths.Add(Path.Combine(ThirdPartyPath, "ffmpeg", "include", "amd64"));
+        }
+        else
+        {
+            // Include path
+            PublicIncludePaths.Add(Path.Combine(ThirdPartyPath, "ffmpeg", "include"));
+        }
         PublicIncludePaths.Add(Path.Combine(Directory.GetCurrentDirectory(), "Runtime","AudioMixer","Private"));
 
 
@@ -78,15 +97,16 @@ public class UFFmpeg : ModuleRules
             new string[]
             {
                 "CoreUObject",
+                "Core",
                 "Engine",
                 "Slate",
                 "SlateCore",
                 "Projects",
                 "Engine",
                 "RHI",
+                "RHICore",
                 /*"UnrealEd",*/
                 "RenderCore",
-                "D3D12RHI"
 				// ... add private dependencies that you statically link with here ...	
 			}
             );

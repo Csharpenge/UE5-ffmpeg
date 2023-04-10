@@ -32,6 +32,7 @@ FEncoderThread::~FEncoderThread()
 
 bool FEncoderThread::Init()
 {
+	counter = 0;
 	return true;
 }
 
@@ -140,12 +141,14 @@ void FEncoderThread::RunEncode()
 		if (IsNeedEncode)
 			EncodeVideo();
 	}
+
 }
 
 void FEncoderThread::EncodeVideo()
 {
 	if (video_data)
 	{
+		counter++;
 		video_encode_delegate.ExecuteIfBound(video_data);
 		video_data = nullptr;
 	}

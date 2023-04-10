@@ -9,6 +9,8 @@
 #include "EncodeData.h"
 #include "Logging/LogVerbosity.h"
 #include "Containers/Ticker.h"
+#include "IImageWrapper.h"
+#include "IImageWrapperModule.h"
 //#include "Editor.h"
 #include "Runtime/Engine/Classes/Kismet/KismetSystemLibrary.h"
 
@@ -19,10 +21,8 @@
 #include "RHI.h"
 #include "Misc/CoreDelegates.h"
 #include "GameDelegates.h"
-#include "IImageWrapper.h"
-#include "IImageWrapperModule.h"
-#include "D3D12RHI.h"
 #include <Kismet/GameplayStatics.h>
+#include "ImageUtils.h"
 
 
 
@@ -112,16 +112,21 @@ void UFFmpegDirector::Begin_Receive_AudioData(UWorld* world)
 
 void UFFmpegDirector::Initialize_Director(UWorld* World, int32 VideoLength, FString OutFileName, bool UseGPU, FString VideoFilter, int VideoFps, int VideoBitRate, float AudioDelay, float SoundVolume)
 {
+
 	avformat_network_init();
+	
+	// Notice end
 
 	FileAddr = OutFileName;
 	audio_delay = AudioDelay;
 	video_fps = VideoFps;
 	Video_Tick_Time = float(1) / float(video_fps);
-	TotalFrame = VideoLength * VideoFps;
+	TotalFrame = VideoLength;
 	FrameCount = 0;
 	FD_world = World;
 	audio_volume = SoundVolume;
+	finishVideocounter = 0;
+	finishAudiocounter = 0;
 
 	gameWindow = GEngine->GameViewport->GetWindow().Get();
 
@@ -181,7 +186,7 @@ void UFFmpegDirector::Initialize_Director(UWorld* World, int32 VideoLength, FStr
 	Begin_Receive_VideoData();
 	Begin_Receive_AudioData(World);
 
-	//End PIE deleate and tick delegate
+	//End PIE delegate and tick delegate
 	//AddEndFunction();
 	AddTickFunction();
 }
@@ -235,7 +240,7 @@ void UFFmpegDirector::Stop(UWorld* _world)
 	delete Runnable;
 	Runnable = nullptr;
 
-	if (AudioDevice)
+	if (AudioDevice && this!=nullptr)
 	{
 		AudioDevice->UnregisterSubmixBufferListener(this);
 	}
@@ -246,6 +251,11 @@ void UFFmpegDirector::Stop(UWorld* _world)
 	FMemory::Free(outs[0]);
 	FMemory::Free(outs[1]);
 	FMemory::Free(buff_bgr);
+
+	/* Only in Test, Quit game after Finish.
+	APlayerController* PlayerController = UGameplayStatics::GetPlayerController(this, 0);
+	UKismetSystemLibrary::QuitGame(_world, PlayerController, EQuitPreference::Quit, true);
+	*/
 
 	// Tell us the file convent finish.
 	OnRecordFinish.Broadcast(FileAddr);
@@ -263,7 +273,10 @@ bool UFFmpegDirector::CheckThreadJobDone(float time)
 {
 	if (Runnable->IsQueneEmpty())
 	{
-		Stop(FD_world);
+		if (finishAudiocounter >= TotalFrame && finishVideocounter >= TotalFrame)
+		{
+			Stop(FD_world);
+		}
 	}
 	return true;
 }
@@ -277,6 +290,7 @@ void UFFmpegDirector::AddEndFunction()
 // 	if(GameMode == EWorldType::PIE)
 // 		FEditorDelegates::EndPIE.AddUObject(this, &UFFmpegDirector::EndWindowReader);
 
+	// Stop Recorder when get enough frame.
 }
 
 void UFFmpegDirector::AddTickFunction()
@@ -310,10 +324,10 @@ void UFFmpegDirector::GetScreenVideoData()
 		list.ReadSurfaceData(GameTexture, Rect, Data, FReadSurfaceDataFlags());
 
 		uint32* TextureData = (uint32*)FMemory::Malloc(4 * Rect.Width() * Rect.Height());
-		
+
 		uint32* RowFlag = TextureData;
 		// Unsure but it work, I don't know why
-		LolStride = width*4;
+		LolStride = width * 4;
 
 		for (int row = 0; row < Rect.Height(); row++)
 		{
@@ -332,7 +346,7 @@ void UFFmpegDirector::GetScreenVideoData()
 	}
 
 	// DirectX 12 & Vulkan end
-
+	
 }
 
 void UFFmpegDirector::CreateEncodeThread()
@@ -347,7 +361,7 @@ void UFFmpegDirector::CreateEncodeThread()
 
 void UFFmpegDirector::Create_Audio_Encoder(const char* audioencoder_name)
 {
-	AVCodec* audioencoder_codec;
+	const AVCodec* audioencoder_codec;
 	audioencoder_codec = avcodec_find_encoder_by_name(audioencoder_name);
 	out_audio_stream = avformat_new_stream(out_format_context, audioencoder_codec);
 	audio_index = out_audio_stream->index;
@@ -358,7 +372,7 @@ void UFFmpegDirector::Create_Audio_Encoder(const char* audioencoder_name)
 		check(false);
 	}
 	audio_encoder_codec_context->codec_id = AV_CODEC_ID_AAC;
-	audio_encoder_codec_context->bit_rate = 120000;
+	audio_encoder_codec_context->bit_rate = 192000;
 	audio_encoder_codec_context->codec_type = AVMEDIA_TYPE_AUDIO;
 	audio_encoder_codec_context->sample_rate = 48000;
 	audio_encoder_codec_context->sample_fmt = AV_SAMPLE_FMT_FLTP;
@@ -384,7 +398,7 @@ void UFFmpegDirector::Create_Audio_Encoder(const char* audioencoder_name)
 
 void UFFmpegDirector::Create_Video_Encoder(bool is_use_NGPU, const char* out_file_name, int bit_rate)
 {
-	AVCodec *encoder_codec;
+	const AVCodec *encoder_codec;
 	int ret;
 
 	if (is_use_NGPU)
@@ -487,7 +501,7 @@ void UFFmpegDirector::Create_Video_Encoder(bool is_use_NGPU, const char* out_fil
 
 void UFFmpegDirector::Video_Frame_YUV_From_BGR(uint8_t *rgb)
 {
-	const int in_linesize[1] = { 3 * width };
+	const int in_linesize[1] = { 3 * (int)width };
 	sws_scale(sws_context, (const uint8_t * const *)&rgb, in_linesize, 0,
 		height, video_frame->data, video_frame->linesize);
 	video_frame->width = out_width;
@@ -553,6 +567,7 @@ void UFFmpegDirector::Encode_Audio_Frame(uint8_t *rgb)
 		av_write_frame(out_format_context, audio_pkt);
 		av_packet_unref(audio_pkt);
 	}
+	finishAudiocounter++;
 }
 
 void UFFmpegDirector::Encode_Video_Frame(uint8_t *rgb)
@@ -569,7 +584,8 @@ void UFFmpegDirector::Encode_Video_Frame(uint8_t *rgb)
 		for (Col = 0; Col < width; ++Col)
 		{
 			uint32 EncodedPixel = *PixelPtr;
-			//	AV_PIX_FMT_BGR24
+			//	AV_PIX_FMT_BGR24	这里暂时转换为BGR
+			//	AV_PIX_FMT_RGB24	掉帧严重 暂时不知道为什么
 			*(buff_bgr + 2) = (EncodedPixel >> 2) & 0xFF;
 			*(buff_bgr + 1) = (EncodedPixel >> 12) & 0xFF;
 			*(buff_bgr) = (EncodedPixel >> 22) & 0xFF;
@@ -624,6 +640,10 @@ void UFFmpegDirector::Encode_Video_Frame(uint8_t *rgb)
 		}
 	}
 	av_frame_unref(filt_frame);	
+
+	
+	UE_LOG(LogTemp, Log, TEXT("Frame %d Encode Finish"), finishVideocounter);
+	finishVideocounter++;
 }
 
 void UFFmpegDirector::Encode_SetCurrentAudioTime(uint8_t* rgb)
