@@ -19,28 +19,27 @@
 #ifndef AVCODEC_LOSSLESS_VIDEOENCDSP_H
 #define AVCODEC_LOSSLESS_VIDEOENCDSP_H
 
+#include <stddef.h>
 #include <stdint.h>
 
-#include "avcodec.h"
-
 typedef struct LLVidEncDSPContext {
-    void (*diff_bytes)(uint8_t *dst /* align 16 */,
-                       const uint8_t *src1 /* align 16 */,
+    void (*diff_bytes)(uint8_t *dst /* align 1 */,
+                       const uint8_t *src1 /* align 1 */,
                        const uint8_t *src2 /* align 1 */,
                        intptr_t w);
     /**
      * Subtract HuffYUV's variant of median prediction.
-     * Note, this might read from src1[-1], src2[-1].
      */
     void (*sub_median_pred)(uint8_t *dst, const uint8_t *src1,
                             const uint8_t *src2, intptr_t w,
                             int *left, int *left_top);
 
-    void (*sub_left_predict)(uint8_t *dst, uint8_t *src,
+    void (*sub_left_predict)(uint8_t *dst, const uint8_t *src,
                           ptrdiff_t stride, ptrdiff_t width, int height);
 } LLVidEncDSPContext;
 
 void ff_llvidencdsp_init(LLVidEncDSPContext *c);
+void ff_llvidencdsp_init_riscv(LLVidEncDSPContext *c);
 void ff_llvidencdsp_init_x86(LLVidEncDSPContext *c);
 
 #endif /* AVCODEC_LOSSLESS_VIDEOENCDSP_H */

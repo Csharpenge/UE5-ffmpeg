@@ -26,16 +26,17 @@
 
 #include <stdint.h>
 
-#include "libavutil/buffer.h"
 #include "libavutil/pixfmt.h"
 #include "libavutil/rational.h"
 
 #include "avcodec.h"
 #include "get_bits.h"
 #include "h264.h"
+#include "h2645_vui.h"
 
 #define MAX_SPS_COUNT          32
 #define MAX_PPS_COUNT         256
+#define MAX_LOG2_MAX_FRAME_NUM    (12 + 4)
 
 /**
  * Sequence parameter set
@@ -56,7 +57,7 @@ typedef struct SPS {
     int ref_frame_count;               ///< num_ref_frames
     int gaps_in_frame_num_allowed_flag;
     int mb_width;                      ///< pic_width_in_mbs_minus1 + 1
-    ///< (pic_height_in_map_units_minus1 + 1) * (2 - frame_mbs_only_flag)
+    /// (pic_height_in_map_units_minus1 + 1) * (2 - frame_mbs_only_flag)
     int mb_height;
     int frame_mbs_only_flag;
     int mb_aff;                        ///< mb_adaptive_frame_field_flag
@@ -69,21 +70,18 @@ typedef struct SPS {
     unsigned int crop_top;             ///< frame_cropping_rect_top_offset
     unsigned int crop_bottom;          ///< frame_cropping_rect_bottom_offset
     int vui_parameters_present_flag;
-    AVRational sar;
-    int video_signal_type_present_flag;
-    int full_range;
-    int colour_description_present_flag;
-    enum AVColorPrimaries color_primaries;
-    enum AVColorTransferCharacteristic color_trc;
-    enum AVColorSpace colorspace;
+    H2645VUI vui;
+
     int timing_info_present_flag;
     uint32_t num_units_in_tick;
     uint32_t time_scale;
     int fixed_frame_rate_flag;
-    short offset_for_ref_frame[256]; // FIXME dyn aloc?
+    int32_t offset_for_ref_frame[256];
     int bitstream_restriction_flag;
     int num_reorder_frames;
+    int max_dec_frame_buffering;
     int scaling_matrix_present;
+    uint16_t scaling_matrix_present_mask;
     uint8_t scaling_matrix4[6][16];
     uint8_t scaling_matrix8[6][64];
     int nal_hrd_parameters_present_flag;
@@ -91,6 +89,10 @@ typedef struct SPS {
     int pic_struct_present_flag;
     int time_offset_length;
     int cpb_cnt;                          ///< See H.264 E.1.2
+    int bit_rate_scale;
+    uint32_t bit_rate_value[32];          ///< bit_rate_value_minus1 + 1
+    uint32_t cpb_size_value[32];          ///< cpb_size_value_minus1 + 1
+    uint32_t cpr_flag;
     int initial_cpb_removal_delay_length; ///< initial_cpb_removal_delay_length_minus1 + 1
     int cpb_removal_delay_length;         ///< cpb_removal_delay_length_minus1 + 1
     int dpb_output_delay_length;          ///< dpb_output_delay_length_minus1 + 1
@@ -106,9 +108,10 @@ typedef struct SPS {
  * Picture parameter set
  */
 typedef struct PPS {
+    unsigned int pps_id;
     unsigned int sps_id;
     int cabac;                  ///< entropy_coding_mode_flag
-    int pic_order_present;      ///< pic_order_present_flag
+    int pic_order_present;      ///< bottom_field_pic_order_in_frame_present_flag
     int slice_group_count;      ///< num_slice_groups_minus1 + 1
     int mb_slice_group_map_type;
     unsigned int ref_count[2];  ///< num_ref_idx_l0/1_active_minus1 + 1
@@ -121,6 +124,8 @@ typedef struct PPS {
     int constrained_intra_pred;     ///< constrained_intra_pred_flag
     int redundant_pic_cnt_present;  ///< redundant_pic_cnt_present_flag
     int transform_8x8_mode;         ///< transform_8x8_mode_flag
+    int pic_scaling_matrix_present_flag;
+    uint16_t pic_scaling_matrix_present_mask;
     uint8_t scaling_matrix4[6][16];
     uint8_t scaling_matrix8[6][64];
     uint8_t chroma_qp_table[2][QP_MAX_NUM+1];  ///< pre-scaled (with chroma_qp_index_offset) version of qp_table
@@ -132,18 +137,25 @@ typedef struct PPS {
     uint32_t dequant8_buffer[6][QP_MAX_NUM + 1][64];
     uint32_t(*dequant4_coeff[6])[16];
     uint32_t(*dequant8_coeff[6])[64];
+
+    const SPS   *sps; ///< RefStruct reference
 } PPS;
 
 typedef struct H264ParamSets {
-    AVBufferRef *sps_list[MAX_SPS_COUNT];
-    AVBufferRef *pps_list[MAX_PPS_COUNT];
+    const SPS *sps_list[MAX_SPS_COUNT]; ///< RefStruct references
+    const PPS *pps_list[MAX_PPS_COUNT]; ///< RefStruct references
 
-    AVBufferRef *pps_ref;
-    AVBufferRef *sps_ref;
     /* currently active parameters sets */
-    const PPS *pps;
-    const SPS *sps;
+    const PPS *pps; ///< RefStruct reference
+    const SPS *sps; ///< ordinary pointer, no RefStruct reference
+
+    int overread_warning_printed[2];
 } H264ParamSets;
+
+/**
+ * compute profile from sps
+ */
+int ff_h264_get_profile(const SPS *sps);
 
 /**
  * Decode SPS

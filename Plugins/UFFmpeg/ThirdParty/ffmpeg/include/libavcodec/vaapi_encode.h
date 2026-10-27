@@ -23,98 +23,174 @@
 
 #include <va/va.h>
 
+#if VA_CHECK_VERSION(1, 0, 0)
+#include <va/va_str.h>
+#endif
+
 #include "libavutil/hwcontext.h"
 #include "libavutil/hwcontext_vaapi.h"
 
 #include "avcodec.h"
+#include "hwconfig.h"
+#include "hw_base_encode.h"
 
 struct VAAPIEncodeType;
 struct VAAPIEncodePicture;
 
+// Codec output packet without timestamp delay, which means the
+// output packet has same PTS and DTS.
+#define FLAG_TIMESTAMP_NO_DELAY 1 << 6
+
 enum {
     MAX_CONFIG_ATTRIBUTES  = 4,
     MAX_GLOBAL_PARAMS      = 4,
-    MAX_PICTURE_REFERENCES = 2,
-    MAX_REORDER_DELAY      = 16,
     MAX_PARAM_BUFFER_SIZE  = 1024,
+    // A.4.1: table A.6 allows at most 22 tile rows for any level.
+    MAX_TILE_ROWS          = 22,
+    // A.4.1: table A.6 allows at most 20 tile columns for any level.
+    MAX_TILE_COLS          = 20,
 };
 
-enum {
-    PICTURE_TYPE_IDR = 0,
-    PICTURE_TYPE_I   = 1,
-    PICTURE_TYPE_P   = 2,
-    PICTURE_TYPE_B   = 3,
-};
+extern const AVCodecHWConfigInternal *const ff_vaapi_encode_hw_configs[];
 
 typedef struct VAAPIEncodeSlice {
     int             index;
-    void           *priv_data;
+    int             row_start;
+    int             row_size;
+    int             block_start;
+    int             block_size;
     void           *codec_slice_params;
 } VAAPIEncodeSlice;
 
 typedef struct VAAPIEncodePicture {
-    struct VAAPIEncodePicture *next;
+#if VA_CHECK_VERSION(1, 0, 0)
+    // ROI regions.
+    VAEncROI       *roi;
+#else
+    void           *roi;
+#endif
 
-    int64_t         display_order;
-    int64_t         encode_order;
-    int64_t         pts;
-
-    int             type;
-    int             input_available;
-    int             encode_issued;
-    int             encode_complete;
-
-    AVFrame        *input_image;
     VASurfaceID     input_surface;
-
-    AVFrame        *recon_image;
     VASurfaceID     recon_surface;
 
     int          nb_param_buffers;
     VABufferID     *param_buffers;
 
-    AVBufferRef    *output_buffer_ref;
+    /* Refcounted via the refstruct-API */
+    VABufferID     *output_buffer_ref;
     VABufferID      output_buffer;
 
-    void           *priv_data;
     void           *codec_picture_params;
-
-    int          nb_refs;
-    struct VAAPIEncodePicture *refs[MAX_PICTURE_REFERENCES];
 
     int          nb_slices;
     VAAPIEncodeSlice *slices;
+
+    /**
+     * indicate if current frame is an independent frame that the coded data
+     * can be pushed to downstream directly. Coded of non-independent frame
+     * data will be concatenated into next independent frame.
+     */
+    int non_independent_frame;
+    /** Tail data of current pic, used only for repeat header of AV1. */
+    char tail_data[MAX_PARAM_BUFFER_SIZE];
+    /** Byte length of tail_data. */
+    size_t tail_size;
 } VAAPIEncodePicture;
 
+typedef struct VAAPIEncodeProfile {
+    // lavc profile value (AV_PROFILE_*).
+    int       av_profile;
+    // Supported bit depth.
+    int       depth;
+    // Number of components.
+    int       nb_components;
+    // Chroma subsampling in width dimension.
+    int       log2_chroma_w;
+    // Chroma subsampling in height dimension.
+    int       log2_chroma_h;
+    // VAAPI profile value.
+    VAProfile va_profile;
+} VAAPIEncodeProfile;
+
+enum {
+    RC_MODE_AUTO,
+    RC_MODE_CQP,
+    RC_MODE_CBR,
+    RC_MODE_VBR,
+    RC_MODE_ICQ,
+    RC_MODE_QVBR,
+    RC_MODE_AVBR,
+    RC_MODE_MAX = RC_MODE_AVBR,
+};
+
+typedef struct VAAPIEncodeRCMode {
+    // Mode from above enum (RC_MODE_*).
+    int mode;
+    // Name.
+    const char *name;
+    // Supported in the compile-time VAAPI version.
+    int supported;
+    // VA mode value (VA_RC_*).
+    uint32_t va_mode;
+    // Uses bitrate parameters.
+    int bitrate;
+    // Supports maxrate distinct from bitrate.
+    int maxrate;
+    // Uses quality value.
+    int quality;
+    // Supports HRD/VBV parameters.
+    int hrd;
+} VAAPIEncodeRCMode;
+
 typedef struct VAAPIEncodeContext {
-    const AVClass *class;
+    // Base context.
+    FFHWBaseEncodeContext base;
 
     // Codec-specific hooks.
     const struct VAAPIEncodeType *codec;
 
-    // Encoding profile (VAProfileXXX).
-    VAProfile       va_profile;
-    // Encoding entrypoint (usually VAEntryointEncSlice).
-    VAEntrypoint    va_entrypoint;
-    // Surface colour/sampling format (usually VA_RT_FORMAT_YUV420).
-    unsigned int    va_rt_format;
-    // Rate control mode.
-    unsigned int    va_rc_mode;
-    // Supported packed headers (initially the desired set, modified
-    // later to what is actually supported).
-    unsigned int    va_packed_headers;
+    // Use low power encoding mode.
+    int             low_power;
 
-    // The required size of surfaces.  This is probably the input
-    // size (AVCodecContext.width|height) aligned up to whatever
-    // block size is required by the codec.
-    int             surface_width;
-    int             surface_height;
+    // Max Frame Size
+    int             max_frame_size;
+
+    // Explicitly set RC mode (otherwise attempt to pick from
+    // available modes).
+    int             explicit_rc_mode;
+
+    // Block Level based bitrate control.
+    int             blbrc;
+
+    // Explicitly-set QP, for use with the "qp" options.
+    // (Forces CQP mode when set, overriding everything else.)
+    int             explicit_qp;
+
+    // Desired packed headers.
+    unsigned int    desired_packed_headers;
 
     // Everything above this point must be set before calling
     // ff_vaapi_encode_init().
 
-    // Codec-specific state.
-    void *priv_data;
+    // Chosen encoding profile details.
+    const VAAPIEncodeProfile *profile;
+
+    // Chosen rate control mode details.
+    const VAAPIEncodeRCMode *rc_mode;
+    // RC quality level - meaning depends on codec and RC mode.
+    // In CQP mode this sets the fixed quantiser value.
+    int             rc_quality;
+
+    // Encoding profile (VAProfile*).
+    VAProfile       va_profile;
+    // Encoding entrypoint (VAEntryoint*).
+    VAEntrypoint    va_entrypoint;
+    // Rate control mode.
+    unsigned int    va_rc_mode;
+    // Bitrate for codec-specific encoder parameters.
+    unsigned int    va_bit_rate;
+    // Packed headers which will actually be sent.
+    unsigned int    va_packed_headers;
 
     // Configuration attributes to use when creating va_config.
     VAConfigAttrib  config_attributes[MAX_CONFIG_ATTRIBUTES];
@@ -123,45 +199,25 @@ typedef struct VAAPIEncodeContext {
     VAConfigID      va_config;
     VAContextID     va_context;
 
-    AVBufferRef    *device_ref;
-    AVHWDeviceContext *device;
     AVVAAPIDeviceContext *hwctx;
 
-    // The hardware frame context containing the input frames.
-    AVBufferRef    *input_frames_ref;
-    AVHWFramesContext *input_frames;
-
-    // The hardware frame context containing the reconstructed frames.
-    AVBufferRef    *recon_frames_ref;
-    AVHWFramesContext *recon_frames;
-
     // Pool of (reusable) bitstream output buffers.
-    AVBufferPool   *output_buffer_pool;
+    struct AVRefStructPool *output_buffer_pool;
 
     // Global parameters which will be applied at the start of the
     // sequence (includes rate control parameters below).
-    VAEncMiscParameterBuffer *global_params[MAX_GLOBAL_PARAMS];
+    int             global_params_type[MAX_GLOBAL_PARAMS];
+    const void     *global_params     [MAX_GLOBAL_PARAMS];
     size_t          global_params_size[MAX_GLOBAL_PARAMS];
     int          nb_global_params;
 
     // Rate control parameters.
-    struct {
-        VAEncMiscParameterBuffer misc;
-        VAEncMiscParameterRateControl rc;
-    } rc_params;
-    struct {
-        VAEncMiscParameterBuffer misc;
-        VAEncMiscParameterHRD hrd;
-    } hrd_params;
-    struct {
-        VAEncMiscParameterBuffer misc;
-        VAEncMiscParameterFrameRate fr;
-    } fr_params;
+    VAEncMiscParameterRateControl rc_params;
+    VAEncMiscParameterHRD        hrd_params;
+    VAEncMiscParameterFrameRate   fr_params;
+    VAEncMiscParameterBufferMaxFrameSize mfs_params;
 #if VA_CHECK_VERSION(0, 36, 0)
-    struct {
-        VAEncMiscParameterBuffer misc;
-        VAEncMiscParameterBufferQualityLevel quality;
-    } quality_params;
+    VAEncMiscParameterBufferQualityLevel quality_params;
 #endif
 
     // Per-sequence parameter structure (VAEncSequenceParameterBuffer*).
@@ -171,56 +227,72 @@ typedef struct VAAPIEncodeContext {
     // structure (VAEncPictureParameterBuffer*).
     void           *codec_picture_params;
 
-    // Current encoding window, in display (input) order.
-    VAAPIEncodePicture *pic_start, *pic_end;
+    // Slice structure.
+    int slice_block_rows;
+    int slice_block_cols;
+    int nb_slices;
+    int slice_size;
 
-    // Next input order index (display order).
-    int64_t         input_order;
-    // Number of frames that output is behind input.
-    int64_t         output_delay;
-    // Number of frames decode output will need to be delayed.
-    int64_t         decode_delay;
-    // Next output order index (encode order).
-    int64_t         output_order;
+    // Tile encoding.
+    int tile_cols;
+    int tile_rows;
+    // Tile width of the i-th column.
+    int col_width[MAX_TILE_COLS];
+    // Tile height of i-th row.
+    int row_height[MAX_TILE_ROWS];
+    // Location of the i-th tile column boundary.
+    int col_bd[MAX_TILE_COLS + 1];
+    // Location of the i-th tile row boundary.
+    int row_bd[MAX_TILE_ROWS + 1];
 
-    enum {
-        // All encode operations are done independently (synchronise
-        // immediately after every operation).
-        ISSUE_MODE_SERIALISE_EVERYTHING = 0,
-        // Overlap as many operations as possible.
-        ISSUE_MODE_MAXIMISE_THROUGHPUT,
-        // Overlap operations only when satisfying parallel dependencies.
-        ISSUE_MODE_MINIMISE_LATENCY,
-    } issue_mode;
+    // Maximum number of regions supported by the driver.
+    int             roi_max_regions;
+    // Quantisation range for offset calculations.  Set by codec-specific
+    // code, as it may change based on parameters.
+    int             roi_quant_range;
 
-    // Timestamp handling.
-    int64_t         first_pts;
-    int64_t         dts_pts_diff;
-    int64_t         ts_ring[MAX_REORDER_DELAY * 3];
+    /** Head data for current output pkt, used only for AV1. */
+    //void  *header_data;
+    //size_t header_data_size;
 
-    // Frame type decision.
-    int p_per_i;
-    int b_per_p;
-    int force_idr;
-    int gop_counter;
-    int p_counter;
-    int end_of_stream;
+    /**
+     * Buffered coded data of a pic if it is an non-independent frame.
+     * This is a RefStruct reference.
+     */
+    VABufferID     *coded_buffer_ref;
 
-    // Codec-local options are allocated to follow this structure in
-    // memory (in the AVCodec definition, set priv_data_size to
-    // sizeof(VAAPIEncodeContext) + sizeof(VAAPIEncodeFooOptions)).
-    void *codec_options;
-    char codec_options_data[0];
+    // Surface alignment required by driver.
+    int             surface_alignment_width;
+    int             surface_alignment_height;
 } VAAPIEncodeContext;
 
-
 typedef struct VAAPIEncodeType {
-    size_t priv_data_size;
+    // List of supported profiles and corresponding VAAPI profiles.
+    // (Must end with AV_PROFILE_UNKNOWN.)
+    const VAAPIEncodeProfile *profiles;
+
+    // Codec feature flags.
+    int flags;
+
+    // Default quality for this codec - used as quantiser or RC quality
+    // factor depending on RC mode.
+    int default_quality;
+
+    // Determine encode parameters like block sizes for surface alignment
+    // and slices. This may need to query the profile and entrypoint,
+    // which will be available when this function is called. If not set,
+    // assume that all blocks are 16x16 and that surfaces should be
+    // aligned to match this.
+    int (*get_encoder_caps)(AVCodecContext *avctx);
 
     // Perform any extra codec-specific configuration after the
     // codec context is initialised (set up the private data and
     // add any necessary global parameters).
     int (*configure)(AVCodecContext *avctx);
+
+    // The size of any private data structure associated with each
+    // picture (can be zero if not required).
+    size_t picture_priv_data_size;
 
     // The size of the parameter structures:
     // sizeof(VAEnc{type}ParameterBuffer{codec}).
@@ -231,9 +303,9 @@ typedef struct VAAPIEncodeType {
     // Fill the parameter structures.
     int  (*init_sequence_params)(AVCodecContext *avctx);
     int   (*init_picture_params)(AVCodecContext *avctx,
-                                 VAAPIEncodePicture *pic);
+                                 FFHWBaseEncodePicture *pic);
     int     (*init_slice_params)(AVCodecContext *avctx,
-                                 VAAPIEncodePicture *pic,
+                                 FFHWBaseEncodePicture *pic,
                                  VAAPIEncodeSlice *slice);
 
     // The type used by the packed header: this should look like
@@ -248,7 +320,7 @@ typedef struct VAAPIEncodeType {
     int (*write_sequence_header)(AVCodecContext *avctx,
                                  char *data, size_t *data_len);
     int  (*write_picture_header)(AVCodecContext *avctx,
-                                 VAAPIEncodePicture *pic,
+                                 FFHWBaseEncodePicture *pic,
                                  char *data, size_t *data_len);
     int    (*write_slice_header)(AVCodecContext *avctx,
                                  VAAPIEncodePicture *pic,
@@ -260,7 +332,7 @@ typedef struct VAAPIEncodeType {
     // with increasing index argument until AVERROR_EOF is
     // returned.
     int    (*write_extra_buffer)(AVCodecContext *avctx,
-                                 VAAPIEncodePicture *pic,
+                                 FFHWBaseEncodePicture *pic,
                                  int index, int *type,
                                  char *data, size_t *data_len);
 
@@ -268,16 +340,48 @@ typedef struct VAAPIEncodeType {
     // with increasing index argument until AVERROR_EOF is
     // returned.
     int    (*write_extra_header)(AVCodecContext *avctx,
-                                 VAAPIEncodePicture *pic,
+                                 FFHWBaseEncodePicture *pic,
                                  int index, int *type,
                                  char *data, size_t *data_len);
 } VAAPIEncodeType;
 
-
-int ff_vaapi_encode2(AVCodecContext *avctx, AVPacket *pkt,
-                     const AVFrame *input_image, int *got_packet);
+int ff_vaapi_encode_receive_packet(AVCodecContext *avctx, AVPacket *pkt);
 
 int ff_vaapi_encode_init(AVCodecContext *avctx);
 int ff_vaapi_encode_close(AVCodecContext *avctx);
+
+
+#define VAAPI_ENCODE_COMMON_OPTIONS \
+    { "low_power", \
+      "Use low-power encoding mode (only available on some platforms; " \
+      "may not support all encoding features)", \
+      OFFSET(common.low_power), AV_OPT_TYPE_BOOL, \
+      { .i64 = 0 }, 0, 1, FLAGS }, \
+    { "max_frame_size", \
+      "Maximum frame size (in bytes)",\
+      OFFSET(common.max_frame_size), AV_OPT_TYPE_INT, \
+      { .i64 = 0 }, 0, INT_MAX / 8, FLAGS }
+
+#define VAAPI_ENCODE_RC_MODE(name, desc) \
+    { #name, desc, 0, AV_OPT_TYPE_CONST, { .i64 = RC_MODE_ ## name }, \
+      0, 0, FLAGS, .unit = "rc_mode" }
+#define VAAPI_ENCODE_RC_OPTIONS \
+    { "rc_mode",\
+      "Set rate control mode", \
+      OFFSET(common.explicit_rc_mode), AV_OPT_TYPE_INT, \
+      { .i64 = RC_MODE_AUTO }, RC_MODE_AUTO, RC_MODE_MAX, FLAGS, .unit = "rc_mode" }, \
+    { "auto", "Choose mode automatically based on other parameters", \
+      0, AV_OPT_TYPE_CONST, { .i64 = RC_MODE_AUTO }, 0, 0, FLAGS, .unit = "rc_mode" }, \
+    VAAPI_ENCODE_RC_MODE(CQP,  "Constant-quality"), \
+    VAAPI_ENCODE_RC_MODE(CBR,  "Constant-bitrate"), \
+    VAAPI_ENCODE_RC_MODE(VBR,  "Variable-bitrate"), \
+    VAAPI_ENCODE_RC_MODE(ICQ,  "Intelligent constant-quality"), \
+    VAAPI_ENCODE_RC_MODE(QVBR, "Quality-defined variable-bitrate"), \
+    VAAPI_ENCODE_RC_MODE(AVBR, "Average variable-bitrate"), \
+    { "blbrc", \
+      "Block level based bitrate control",\
+      OFFSET(common.blbrc), AV_OPT_TYPE_BOOL, \
+      { .i64 = 0 }, 0, 1, FLAGS }
+
 
 #endif /* AVCODEC_VAAPI_ENCODE_H */

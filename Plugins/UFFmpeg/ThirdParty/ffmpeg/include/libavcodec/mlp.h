@@ -24,7 +24,10 @@
 
 #include <stdint.h>
 
-#include "avcodec.h"
+#include "libavutil/channel_layout.h"
+
+#define SYNC_MLP        0xbb
+#define SYNC_TRUEHD     0xba
 
 /** Last possible matrix channel for each codec */
 #define MAX_MATRIX_CHANNEL_MLP      5
@@ -66,6 +69,15 @@
 
 /** Code that signals end of a stream. */
 #define END_OF_STREAM       0xd234d234
+
+#define PARAM_BLOCKSIZE     (1 << 7)
+#define PARAM_MATRIX        (1 << 6)
+#define PARAM_OUTSHIFT      (1 << 5)
+#define PARAM_QUANTSTEP     (1 << 4)
+#define PARAM_FIR           (1 << 3)
+#define PARAM_IIR           (1 << 2)
+#define PARAM_HUFFOFFSET    (1 << 1)
+#define PARAM_PRESENCE      (1 << 0)
 
 #define FIR 0
 #define IIR 1
@@ -134,7 +146,7 @@ typedef struct {
  */
 extern const ChannelInformation ff_mlp_ch_info[21];
 
-extern const uint64_t ff_mlp_channel_layouts[12];
+extern const AVChannelLayout ff_mlp_ch_layouts[12];
 
 /** MLP uses checksums that seem to be based on the standard CRC algorithm, but
  *  are not (in implementation terms, the table lookup and XOR are reversed).

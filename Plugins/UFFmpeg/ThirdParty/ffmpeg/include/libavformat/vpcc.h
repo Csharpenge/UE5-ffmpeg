@@ -27,21 +27,36 @@
 #ifndef AVFORMAT_VPCC_H
 #define AVFORMAT_VPCC_H
 
-#include <stdint.h>
+#include "libavutil/rational.h"
+#include "libavcodec/codec_par.h"
 #include "avio.h"
-#include "avformat.h"
-#include "libavcodec/avcodec.h"
+
+typedef struct VPCC {
+    int profile;
+    int level;
+    int bitdepth;
+    int chroma_subsampling;
+    int full_range_flag;
+} VPCC;
 
 /**
  * Writes VP codec configuration to the provided AVIOContext.
  *
- * @param s address of the AVFormatContext for the logging context.
+ * @param logctx opaque pointer for logging.
  * @param pb address of the AVIOContext where the vpcC shall be written.
+ * @param data address of a data array which contains coded bitstream data from
+ *             which codec information can be extracted. May be NULL.
+ * @param len length of the data array.
  * @param par address of the AVCodecParameters which contains codec information.
  * @return >=0 in case of success, a negative value corresponding to an AVERROR
  *         code in case of failure
  */
-int ff_isom_write_vpcc(AVFormatContext *s, AVIOContext *pb,
-                       AVCodecParameters *par);
+int ff_isom_write_vpcc(void *logctx, AVIOContext *pb,
+                       const uint8_t *data, int len,
+                       const AVCodecParameters *par);
+
+int ff_isom_get_vpcc_features(void *logctx, const AVCodecParameters *par,
+                              const uint8_t *data, int len,
+                              const AVRational *frame_rate, VPCC *vpcc);
 
 #endif /* AVFORMAT_VPCC_H */

@@ -22,7 +22,9 @@
 #include <stddef.h>
 #include <stdint.h>
 
-typedef void (*h264_chroma_mc_func)(uint8_t *dst /*align 8*/, uint8_t *src /*align 1*/, ptrdiff_t srcStride, int h, int x, int y);
+typedef void (*h264_chroma_mc_func)(uint8_t *dst /* align width * (bit_depth+7)/8) */,
+                                    const uint8_t *src /* align (bit_depth+7)/8) */,
+                                    ptrdiff_t srcStride, int h, int x, int y);
 
 typedef struct H264ChromaContext {
     h264_chroma_mc_func put_h264_chroma_pixels_tab[4];
@@ -36,5 +38,12 @@ void ff_h264chroma_init_arm(H264ChromaContext *c, int bit_depth);
 void ff_h264chroma_init_ppc(H264ChromaContext *c, int bit_depth);
 void ff_h264chroma_init_x86(H264ChromaContext *c, int bit_depth);
 void ff_h264chroma_init_mips(H264ChromaContext *c, int bit_depth);
+void ff_h264chroma_init_loongarch(H264ChromaContext *c, int bit_depth);
+void ff_h264chroma_init_riscv(H264ChromaContext *c, int bit_depth);
+
+void ff_put_h264_chroma_mc2_8_c(uint8_t *dst, const uint8_t *src,
+                                ptrdiff_t srcStride, int h, int x, int y);
+void ff_avg_h264_chroma_mc2_8_c(uint8_t *dst, const uint8_t *src,
+                                ptrdiff_t srcStride, int h, int x, int y);
 
 #endif /* AVCODEC_H264CHROMA_H */

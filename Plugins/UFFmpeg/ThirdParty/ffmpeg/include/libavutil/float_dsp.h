@@ -19,7 +19,7 @@
 #ifndef AVUTIL_FLOAT_DSP_H
 #define AVUTIL_FLOAT_DSP_H
 
-#include "config.h"
+#include <stddef.h>
 
 typedef struct AVFloatDSPContext {
     /**
@@ -161,7 +161,7 @@ typedef struct AVFloatDSPContext {
      * @param v2  second input vector, difference output, 16-byte aligned
      * @param len length of vectors, multiple of 4
      */
-    void (*butterflies_float)(float *av_restrict v1, float *av_restrict v2, int len);
+    void (*butterflies_float)(float *restrict v1, float *restrict v2, int len);
 
     /**
      * Calculate the scalar product of two vectors of floats.
@@ -173,10 +173,41 @@ typedef struct AVFloatDSPContext {
      * @return sum of elementwise products
      */
     float (*scalarproduct_float)(const float *v1, const float *v2, int len);
+
+    /**
+     * Calculate the entry wise product of two vectors of doubles and store the result in
+     * a vector of doubles.
+     *
+     * @param dst  output vector
+     *             constraints: 32-byte aligned
+     * @param src0 first input vector
+     *             constraints: 32-byte aligned
+     * @param src1 second input vector
+     *             constraints: 32-byte aligned
+     * @param len  number of elements in the input
+     *             constraints: multiple of 16
+     */
+    void (*vector_dmul)(double *dst, const double *src0, const double *src1,
+                        int len);
+
+    /**
+     * Calculate the scalar product of two vectors of doubles.
+     *
+     * @param v1  first vector
+     *            constraints: 32-byte aligned
+     * @param v2  second vector
+     *            constraints: 32-byte aligned
+     * @param len length of vectors
+     *            constraints: multiple of 16
+     *
+     * @return inner product of the vectors
+     */
+    double (*scalarproduct_double)(const double *v1, const double *v2,
+                                   size_t len);
 } AVFloatDSPContext;
 
 /**
- * Return the scalar product of two vectors.
+ * Return the scalar product of two vectors of floats.
  *
  * @param v1  first input vector
  * @param v2  first input vector
@@ -184,11 +215,24 @@ typedef struct AVFloatDSPContext {
  *
  * @return sum of elementwise products
  */
-float avpriv_scalarproduct_float_c(const float *v1, const float *v2, int len);
+float ff_scalarproduct_float_c(const float *v1, const float *v2, int len);
+
+/**
+ * Return the scalar product of two vectors of doubles.
+ *
+ * @param v1  first input vector
+ * @param v2  first input vector
+ * @param len number of elements
+ *
+ * @return inner product of the vectors
+ */
+double ff_scalarproduct_double_c(const double *v1, const double *v2,
+                                 size_t len);
 
 void ff_float_dsp_init_aarch64(AVFloatDSPContext *fdsp);
 void ff_float_dsp_init_arm(AVFloatDSPContext *fdsp);
 void ff_float_dsp_init_ppc(AVFloatDSPContext *fdsp, int strict);
+void ff_float_dsp_init_riscv(AVFloatDSPContext *fdsp);
 void ff_float_dsp_init_x86(AVFloatDSPContext *fdsp);
 void ff_float_dsp_init_mips(AVFloatDSPContext *fdsp);
 

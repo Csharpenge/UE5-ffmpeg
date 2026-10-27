@@ -1,5 +1,5 @@
 /*
- * copyright (c) 2015 Rodger Combs <rodger.combs@gmail.com>
+ * copyright (c) 2015 rcombs
  *
  * This file is part of FFmpeg.
  *
@@ -21,7 +21,7 @@
 #ifndef AVUTIL_AES_INTERNAL_H
 #define AVUTIL_AES_INTERNAL_H
 
-#include "mem.h"
+#include "mem_internal.h"
 #include <stdint.h>
 
 typedef union {
@@ -39,5 +39,7 @@ typedef struct AVAES {
     int rounds;
     void (*crypt)(struct AVAES *a, uint8_t *dst, const uint8_t *src, int count, uint8_t *iv, int rounds);
 } AVAES;
+
+void ff_init_aes_x86(AVAES *a, int decrypt);
 
 #endif /* AVUTIL_AES_INTERNAL_H */

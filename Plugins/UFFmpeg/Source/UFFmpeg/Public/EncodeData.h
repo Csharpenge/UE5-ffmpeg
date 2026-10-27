@@ -3,7 +3,6 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "EncodeData.generated.h"
 /**
  * 
  */
@@ -25,10 +24,16 @@ private:
 	int datasize;
 };
 
-UCLASS()
-class UFFMPEG_API UCircleQueue:public UObject
+/**
+ * Plain (non-UObject) ring buffer used by the encoder thread.
+ *
+ * It used to be a UObject created with NewObject() and destroyed manually with
+ * ConditionalBeginDestroy() + BeginDestroy(), which removed it from the UObject hash twice and
+ * made UE 5.8 fatal with "hash itself may be corrupted". The queues are owned exclusively by
+ * FEncoderThread, so they need neither GC nor rooting.
+ */
+class UFFMPEG_API UCircleQueue
 {
-	GENERATED_BODY()
 public:
 	UCircleQueue();
 	~UCircleQueue();
@@ -41,7 +46,7 @@ public:
 	EncodeDelegate encode_delegate;
 private:
 	int queue_num;
-	//队列空闲数量
+	// Number of free slots in the queue
 	int queue_freenum;
 	int queue_head;
 	int queue_tail;

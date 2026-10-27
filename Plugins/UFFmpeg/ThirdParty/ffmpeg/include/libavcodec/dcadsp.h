@@ -22,8 +22,8 @@
 #define AVCODEC_DCADSP_H
 
 #include "libavutil/common.h"
+#include "libavutil/tx.h"
 
-#include "fft.h"
 #include "dcadct.h"
 #include "synth_filter.h"
 
@@ -40,14 +40,15 @@ typedef struct DCADSPContext {
                          ptrdiff_t sb_start, ptrdiff_t sb_end,
                          ptrdiff_t ofs, ptrdiff_t len);
 
-    void (*lfe_fir_float[2])(float *pcm_samples, int32_t *lfe_samples,
+    void (*lfe_fir_float[2])(float *pcm_samples, const int32_t *lfe_samples,
                              const float *filter_coeff, ptrdiff_t npcmblocks);
 
     void (*lfe_x96_float)(float *dst, const float *src,
                           float *hist, ptrdiff_t len);
 
     void (*sub_qmf_float[2])(SynthFilterContext *synth,
-                             FFTContext *imdct,
+                             AVTXContext *imdct,
+                             av_tx_fn imdct_fn,
                              float *pcm_samples,
                              int32_t **subband_samples_lo,
                              int32_t **subband_samples_hi,
@@ -55,7 +56,7 @@ typedef struct DCADSPContext {
                              const float *filter_coeff, ptrdiff_t npcmblocks,
                              float scale);
 
-    void (*lfe_fir_fixed)(int32_t *pcm_samples, int32_t *lfe_samples,
+    void (*lfe_fir_fixed)(int32_t *pcm_samples, const int32_t *lfe_samples,
                           const int32_t *filter_coeff, ptrdiff_t npcmblocks);
 
     void (*lfe_x96_fixed)(int32_t *dst, const int32_t *src,
@@ -94,6 +95,7 @@ typedef struct DCADSPContext {
 } DCADSPContext;
 
 av_cold void ff_dcadsp_init(DCADSPContext *s);
+av_cold void ff_dcadsp_init_aarch64(DCADSPContext *s);
 av_cold void ff_dcadsp_init_x86(DCADSPContext *s);
 
 #endif

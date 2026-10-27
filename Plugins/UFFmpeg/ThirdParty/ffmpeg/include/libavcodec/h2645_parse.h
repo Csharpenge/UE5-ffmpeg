@@ -23,16 +23,17 @@
 
 #include <stdint.h>
 
-#include "avcodec.h"
+#include "libavutil/buffer.h"
+#include "libavutil/error.h"
+#include "libavutil/log.h"
+#include "codec_id.h"
 #include "get_bits.h"
 
 #define MAX_MBPAIR_SIZE (256*1024) // a tighter bound could be calculated if someone cares about a few bytes
 
 typedef struct H2645NAL {
-    uint8_t *rbsp_buffer;
-
-    int size;
     const uint8_t *data;
+    int size;
 
     /**
      * Size, in bits, of just the data, excluding the stop bit and any trailing
@@ -51,21 +52,28 @@ typedef struct H2645NAL {
     int type;
 
     /**
+     * H.264 only, nal_ref_idc
+     */
+    int ref_idc;
+
+    /**
      * HEVC only, nuh_temporal_id_plus_1 - 1
      */
     int temporal_id;
 
+    /*
+     * HEVC only, identifier of layer to which nal unit belongs
+     */
+    int nuh_layer_id;
+
     int skipped_bytes;
     int skipped_bytes_pos_size;
     int *skipped_bytes_pos;
-    /**
-     * H.264 only, nal_ref_idc
-     */
-    int ref_idc;
 } H2645NAL;
 
 typedef struct H2645RBSP {
     uint8_t *rbsp_buffer;
+    AVBufferRef *rbsp_buffer_ref;
     int rbsp_buffer_alloc_size;
     int rbsp_buffer_size;
 } H2645RBSP;
@@ -76,6 +84,7 @@ typedef struct H2645Packet {
     H2645RBSP rbsp;
     int nb_nals;
     int nals_allocated;
+    unsigned nal_buffer_size;
 } H2645Packet;
 
 /**
@@ -84,17 +93,39 @@ typedef struct H2645Packet {
 int ff_h2645_extract_rbsp(const uint8_t *src, int length, H2645RBSP *rbsp,
                           H2645NAL *nal, int small_padding);
 
+enum {
+    H2645_FLAG_IS_NALFF =         (1 << 0),
+    H2645_FLAG_SMALL_PADDING =    (1 << 1),
+    H2645_FLAG_USE_REF =          (1 << 2),
+};
+
 /**
  * Split an input packet into NAL units.
+ *
+ * If data == raw_data holds true for a NAL unit of the returned pkt, then
+ * said NAL unit does not contain any emulation_prevention_three_byte and
+ * the data is contained in the input buffer pointed to by buf.
+ * Otherwise, the unescaped data is part of the rbsp_buffer described by the
+ * packet's H2645RBSP.
+ *
+ * If the packet's rbsp_buffer_ref is not NULL, the underlying AVBuffer must
+ * own rbsp_buffer. If not and rbsp_buffer is not NULL, H2645_FLAG_USE_REF
+ * must not be set in flags.
+ * If H2645_FLAG_USE_REF is set in flags, rbsp_buffer will be reference-counted
+ * and owned by the underlying AVBuffer of rbsp_buffer_ref.
  */
 int ff_h2645_packet_split(H2645Packet *pkt, const uint8_t *buf, int length,
-                          void *logctx, int is_nalff, int nal_length_size,
-                          enum AVCodecID codec_id, int small_padding);
+                          void *logctx, int nal_length_size,
+                          enum AVCodecID codec_id, int flags);
 
 /**
  * Free all the allocated memory in the packet.
  */
 void ff_h2645_packet_uninit(H2645Packet *pkt);
+
+int ff_h2645_unit_requires_zero_byte(enum AVCodecID codec_id,
+                                     unsigned int type,
+                                     int nal_unit_index);
 
 static inline int get_nalsize(int nal_length_size, const uint8_t *buf,
                               int buf_size, int *buf_index, void *logctx)
@@ -103,7 +134,7 @@ static inline int get_nalsize(int nal_length_size, const uint8_t *buf,
 
     if (*buf_index >= buf_size - nal_length_size) {
         // the end of the buffer is reached, refill it
-        return AVERROR(EAGAIN);
+        return AVERROR_INVALIDDATA;
     }
 
     for (i = 0; i < nal_length_size; i++)

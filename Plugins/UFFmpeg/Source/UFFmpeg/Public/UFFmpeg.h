@@ -21,9 +21,7 @@ private:
 	void* AVCodecLibrary;
 	void* SWScaleLibrary;
 	void* AVFormatLibrary;
-	void* PostProcLibrary;
 	void* AVFilterLibrary;
-	void* AVDeviceLibrary;
 
 	bool Initialized;
 };

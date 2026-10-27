@@ -245,6 +245,14 @@ void ff_amf_write_null(uint8_t **dst);
 void ff_amf_write_object_start(uint8_t **dst);
 
 /**
+ * Write marker and length for AMF array to buffer.
+ *
+ * @param dst pointer to the input buffer (will be modified)
+ * @param length value to write
+ */
+void ff_amf_write_array_start(uint8_t **dst, uint32_t length);
+
+/**
  * Write string used as field name in AMF object to buffer.
  *
  * @param dst pointer to the input buffer (will be modified)
@@ -258,15 +266,6 @@ void ff_amf_write_field_name(uint8_t **dst, const char *str);
  * @param dst pointer to the input buffer (will be modified)
  */
 void ff_amf_write_object_end(uint8_t **dst);
-
-/**
- * Read AMF boolean value.
- *
- *@param[in,out] gbc GetByteContext initialized with AMF-formatted data
- *@param[out]    val 0 or 1
- *@return 0 on success or an AVERROR code on failure
-*/
-int ff_amf_read_bool(GetByteContext *gbc, int *val);
 
 /**
  * Read AMF number value.

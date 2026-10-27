@@ -28,7 +28,9 @@
 #ifndef AVCODEC_AACENCTAB_H
 #define AVCODEC_AACENCTAB_H
 
+#include "libavutil/channel_layout.h"
 #include "aac.h"
+#include "defs.h"
 
 /** Total number of usable codebooks **/
 #define CB_TOT 12
@@ -38,38 +40,50 @@
 
 #define AAC_MAX_CHANNELS 16
 
-extern const uint8_t *ff_aac_swb_size_1024[];
-extern const int      ff_aac_swb_size_1024_len;
-extern const uint8_t *ff_aac_swb_size_128[];
-extern const int      ff_aac_swb_size_128_len;
+extern const uint8_t *const ff_aac_swb_size_1024[];
+extern const uint8_t *const ff_aac_swb_size_128[];
 
 /* Supported layouts without using a PCE */
-static const int64_t aac_normal_chan_layouts[7] = {
-    AV_CH_LAYOUT_MONO,
-    AV_CH_LAYOUT_STEREO,
-    AV_CH_LAYOUT_SURROUND,
-    AV_CH_LAYOUT_4POINT0,
-    AV_CH_LAYOUT_5POINT0_BACK,
-    AV_CH_LAYOUT_5POINT1_BACK,
-    AV_CH_LAYOUT_7POINT1,
+static const AVChannelLayout aac_normal_chan_layouts[15] = {
+    { 0 },
+    AV_CHANNEL_LAYOUT_MONO,
+    AV_CHANNEL_LAYOUT_STEREO,
+    AV_CHANNEL_LAYOUT_SURROUND,
+    AV_CHANNEL_LAYOUT_4POINT0,
+    AV_CHANNEL_LAYOUT_5POINT0_BACK,
+    AV_CHANNEL_LAYOUT_5POINT1_BACK,
+    { 0 }, // AV_CHANNEL_LAYOUT_7POINT1_WIDE_BACK, disabled in favor or PCE configuration
+    { 0 },
+    { 0 },
+    { 0 },
+    AV_CHANNEL_LAYOUT_6POINT1_BACK,
+    AV_CHANNEL_LAYOUT_7POINT1,
+    { 0 },
+    AV_CHANNEL_LAYOUT_5POINT1POINT2_BACK,
 };
 
 /** default channel configurations */
-static const uint8_t aac_chan_configs[AAC_MAX_CHANNELS][6] = {
+static const uint8_t aac_chan_configs[14][6] = {
     {1, TYPE_SCE},                                         // 1 channel  - single channel element
     {1, TYPE_CPE},                                         // 2 channels - channel pair
     {2, TYPE_SCE, TYPE_CPE},                               // 3 channels - center + stereo
     {3, TYPE_SCE, TYPE_CPE, TYPE_SCE},                     // 4 channels - front center + stereo + back center
     {3, TYPE_SCE, TYPE_CPE, TYPE_CPE},                     // 5 channels - front center + stereo + back stereo
     {4, TYPE_SCE, TYPE_CPE, TYPE_CPE, TYPE_LFE},           // 6 channels - front center + stereo + back stereo + LFE
-    {0},                                                   // 7 channels - invalid without PCE
+    {0},
+    {0},
+    {0},
+    {0},
+    {5, TYPE_SCE, TYPE_CPE, TYPE_CPE, TYPE_SCE, TYPE_LFE}, // 7 channels - front center + front stereo + back stereo + back center + LFE
     {5, TYPE_SCE, TYPE_CPE, TYPE_CPE, TYPE_CPE, TYPE_LFE}, // 8 channels - front center + front stereo + side stereo + back stereo + LFE
+    {0},
+    {5, TYPE_SCE, TYPE_CPE, TYPE_CPE, TYPE_LFE, TYPE_CPE}, // 8 channels - front center + front stereo + back stereo + LFE + top front stereo
 };
 
 /**
  * Table to remap channels from libavcodec's default order to AAC order.
  */
-static const uint8_t aac_chan_maps[AAC_MAX_CHANNELS][AAC_MAX_CHANNELS] = {
+static const uint8_t aac_chan_maps[14][AAC_MAX_CHANNELS] = {
     { 0 },
     { 0, 1 },
     { 2, 0, 1 },
@@ -77,14 +91,13 @@ static const uint8_t aac_chan_maps[AAC_MAX_CHANNELS][AAC_MAX_CHANNELS] = {
     { 2, 0, 1, 3, 4 },
     { 2, 0, 1, 4, 5, 3 },
     { 0 },
+    { 0 },
+    { 0 },
+    { 0 },
+    { 2, 0, 1, 4, 5, 6, 3, },
     { 2, 0, 1, 6, 7, 4, 5, 3 },
-};
-
-/* duplicated from avpriv_mpeg4audio_sample_rates to avoid shared build
- * failures */
-static const int mpeg4audio_sample_rates[16] = {
-    96000, 88200, 64000, 48000, 44100, 32000,
-    24000, 22050, 16000, 12000, 11025, 8000, 7350
+    { 0 },
+    { 2, 0, 1, 4, 5, 3, 6, 7 },
 };
 
 /** bits needed to code codebook run value for long windows */
@@ -130,10 +143,8 @@ static const unsigned char aac_maxval_cb[] = {
 };
 
 static const int aacenc_profiles[] = {
-    FF_PROFILE_AAC_MAIN,
-    FF_PROFILE_AAC_LOW,
-    FF_PROFILE_AAC_LTP,
-    FF_PROFILE_MPEG2_AAC_LOW,
+    AV_PROFILE_AAC_LOW,
+    AV_PROFILE_MPEG2_AAC_LOW,
 };
 
 #endif /* AVCODEC_AACENCTAB_H */

@@ -31,8 +31,10 @@
 
 #include <stdint.h>
 
-static const uint8_t gif87a_sig[6] = "GIF87a";
-static const uint8_t gif89a_sig[6] = "GIF89a";
+#include "libavutil/attributes_internal.h"
+
+static attribute_nonstring const uint8_t gif87a_sig[6] = "GIF87a";
+static attribute_nonstring const uint8_t gif89a_sig[6] = "GIF89a";
 
 #define GCE_DISPOSAL_NONE       0
 #define GCE_DISPOSAL_INPLACE    1
@@ -43,6 +45,7 @@ static const uint8_t gif89a_sig[6] = "GIF89a";
 #define GIF_EXTENSION_INTRODUCER    0x21
 #define GIF_IMAGE_SEPARATOR         0x2c
 #define GIF_GCE_EXT_LABEL           0xf9
+#define GIF_COM_EXT_LABEL           0xfe
 #define GIF_APP_EXT_LABEL           0xff
 #define NETSCAPE_EXT_STR            "NETSCAPE2.0"
 

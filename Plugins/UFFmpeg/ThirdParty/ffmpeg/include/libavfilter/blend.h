@@ -59,22 +59,34 @@ enum BlendMode {
     BLEND_HEAT,
     BLEND_FREEZE,
     BLEND_EXTREMITY,
+    BLEND_SOFTDIFFERENCE,
+    BLEND_GEOMETRIC,
+    BLEND_HARMONIC,
+    BLEND_BLEACH,
+    BLEND_STAIN,
+    BLEND_INTERPOLATE,
+    BLEND_HARDOVERLAY,
     BLEND_NB
 };
+
+typedef struct SliceParams {
+    double *values;
+    int starty;
+    AVExpr *e;
+} SliceParams;
 
 typedef struct FilterParams {
     enum BlendMode mode;
     double opacity;
-    AVExpr *e;
+    AVExpr **e;
     char *expr_str;
     void (*blend)(const uint8_t *top, ptrdiff_t top_linesize,
                   const uint8_t *bottom, ptrdiff_t bottom_linesize,
                   uint8_t *dst, ptrdiff_t dst_linesize,
                   ptrdiff_t width, ptrdiff_t height,
-                  struct FilterParams *param, double *values, int starty);
+                  struct FilterParams *param, SliceParams *sliceparam);
 } FilterParams;
 
-void ff_blend_init(FilterParams *param, int is_16bit);
-void ff_blend_init_x86(FilterParams *param, int is_16bit);
+void ff_blend_init_x86(FilterParams *param, int depth);
 
 #endif /* AVFILTER_BLEND_H */

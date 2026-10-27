@@ -16,3 +16,14 @@ Saved
 
 #Custom ignore properties
 *.mp4
+
+#Local FFmpeg / x264 build scratch (regenerable, not part of the plugin)
+_android_build/
+_x264_android/
+x264/
+ffmpeg-9.0.2/
+
+#Generated IDE project files
+*.sln
+*.slnx
+.vsconfig

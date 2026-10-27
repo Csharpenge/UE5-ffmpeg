@@ -27,7 +27,8 @@
 #ifndef AVCODEC_MPEGAUDIODECHEADER_H
 #define AVCODEC_MPEGAUDIODECHEADER_H
 
-#include "avcodec.h"
+#include <stdint.h>
+#include "codec_id.h"
 
 #define MP3_MASK 0xFFFE0CCF
 
@@ -61,6 +62,9 @@ int ff_mpa_decode_header(uint32_t head, int *sample_rate,
 static inline int ff_mpa_check_header(uint32_t header){
     /* header */
     if ((header & 0xffe00000) != 0xffe00000)
+        return -1;
+    /* version check */
+    if ((header & (3<<19)) == 1<<19)
         return -1;
     /* layer check */
     if ((header & (3<<17)) == 0)

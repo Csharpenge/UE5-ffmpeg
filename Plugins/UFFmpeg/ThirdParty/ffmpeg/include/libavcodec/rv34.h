@@ -27,7 +27,10 @@
 #ifndef AVCODEC_RV34_H
 #define AVCODEC_RV34_H
 
+#include "libavutil/mem_internal.h"
+
 #include "avcodec.h"
+#include "get_bits.h"
 #include "mpegvideo.h"
 
 #include "h264pred.h"
@@ -61,12 +64,12 @@ enum RV40BlockTypes{
  * Intra frame VLC sets do not contain some of those tables.
  */
 typedef struct RV34VLC{
-    VLC cbppattern[2];     ///< VLCs used for pattern of coded block patterns decoding
-    VLC cbp[2][4];         ///< VLCs used for coded block patterns decoding
-    VLC first_pattern[4];  ///< VLCs used for decoding coefficients in the first subblock
-    VLC second_pattern[2]; ///< VLCs used for decoding coefficients in the subblocks 2 and 3
-    VLC third_pattern[2];  ///< VLCs used for decoding coefficients in the last subblock
-    VLC coefficient;       ///< VLCs used for decoding big coefficients
+    const VLCElem *cbppattern[2];     ///< VLCs used for pattern of coded block patterns decoding
+    VLC cbp[2][4];                    ///< VLCs used for coded block patterns decoding
+    const VLCElem *first_pattern[4];  ///< VLCs used for decoding coefficients in the first subblock
+    const VLCElem *second_pattern[2]; ///< VLCs used for decoding coefficients in the subblocks 2 and 3
+    const VLCElem *third_pattern[2];  ///< VLCs used for decoding coefficients in the last subblock
+    const VLCElem *coefficient;       ///< VLCs used for decoding big coefficients
 }RV34VLC;
 
 /** essential slice information */
@@ -83,6 +86,7 @@ typedef struct SliceInfo{
 /** decoder context */
 typedef struct RV34DecContext{
     MpegEncContext s;
+    GetBitContext gb;
     RV34DSPContext rdsp;
     int8_t *intra_types_hist;///< old block types, used for prediction
     int8_t *intra_types;     ///< block types
@@ -90,9 +94,12 @@ typedef struct RV34DecContext{
     const uint8_t *luma_dc_quant_i;///< luma subblock DC quantizer for intraframes
     const uint8_t *luma_dc_quant_p;///< luma subblock DC quantizer for interframes
 
-    RV34VLC *cur_vlcs;       ///< VLC set used for current frame decoding
+    const RV34VLC *cur_vlcs; ///< VLC set used for current frame decoding
     H264PredContext h;       ///< functions for 4x4 and 16x16 intra block prediction
     SliceInfo si;            ///< current slice information
+
+    int mb_num_left;         ///< number of MBs left in this video packet
+    int mb_skip_run;
 
     int *mb_type;            ///< internal macroblock types
     int block_type;          ///< current block type
@@ -115,6 +122,7 @@ typedef struct RV34DecContext{
     uint8_t  *cbp_chroma;    ///< CBP values for chroma subblocks
     uint16_t *deblock_coefs; ///< deblock coefficients for each macroblock
 
+    DECLARE_ALIGNED_16(int16_t, block)[16];
     /** 8x8 block available flags (for MV prediction) */
     DECLARE_ALIGNED(8, uint32_t, avail_cache)[3*4];
 
@@ -134,9 +142,9 @@ typedef struct RV34DecContext{
  */
 int ff_rv34_get_start_offset(GetBitContext *gb, int blocks);
 int ff_rv34_decode_init(AVCodecContext *avctx);
-int ff_rv34_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, AVPacket *avpkt);
+int ff_rv34_decode_frame(AVCodecContext *avctx, AVFrame *frame,
+                         int *got_frame, AVPacket *avpkt);
 int ff_rv34_decode_end(AVCodecContext *avctx);
-int ff_rv34_decode_init_thread_copy(AVCodecContext *avctx);
 int ff_rv34_decode_update_thread_context(AVCodecContext *dst, const AVCodecContext *src);
 
 #endif /* AVCODEC_RV34_H */

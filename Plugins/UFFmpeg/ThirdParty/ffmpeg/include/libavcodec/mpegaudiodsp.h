@@ -22,7 +22,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "libavutil/common.h"
+#include "libavutil/attributes_internal.h"
+#include "libavutil/macros.h"
 
 typedef struct MPADSPContext {
     void (*apply_window_float)(float *synth_buf, float *window,
@@ -40,6 +41,7 @@ typedef struct MPADSPContext {
                                  int count, int switch_point, int block_type);
 } MPADSPContext;
 
+FF_VISIBILITY_PUSH_HIDDEN
 void ff_mpadsp_init(MPADSPContext *s);
 
 extern int32_t ff_mpa_synth_window_fixed[];
@@ -63,11 +65,12 @@ void ff_mpadsp_init_aarch64(MPADSPContext *s);
 void ff_mpadsp_init_arm(MPADSPContext *s);
 void ff_mpadsp_init_ppc(MPADSPContext *s);
 void ff_mpadsp_init_x86(MPADSPContext *s);
+void ff_mpadsp_init_x86_tabs(void);
 void ff_mpadsp_init_mipsfpu(MPADSPContext *s);
 void ff_mpadsp_init_mipsdsp(MPADSPContext *s);
 
-void ff_mpa_synth_init_float(float *window);
-void ff_mpa_synth_init_fixed(int32_t *window);
+void ff_mpa_synth_init_float(void);
+void ff_mpa_synth_init_fixed(void);
 
 void ff_mpadsp_apply_window_float(float *synth_buf, float *window,
                                   int *dither_state, float *samples,
@@ -82,13 +85,11 @@ void ff_imdct36_blocks_float(float *out, float *buf, float *in,
 void ff_imdct36_blocks_fixed(int *out, int *buf, int *in,
                              int count, int switch_point, int block_type);
 
-void ff_init_mpadsp_tabs_float(void);
-void ff_init_mpadsp_tabs_fixed(void);
-
 /** For SSE implementation, MDCT_BUF_SIZE/2 should be 128-bit aligned */
 #define MDCT_BUF_SIZE FFALIGN(36, 2*4)
 
 extern int ff_mdct_win_fixed[8][MDCT_BUF_SIZE];
 extern float ff_mdct_win_float[8][MDCT_BUF_SIZE];
+FF_VISIBILITY_POP_HIDDEN
 
 #endif /* AVCODEC_MPEGAUDIODSP_H */

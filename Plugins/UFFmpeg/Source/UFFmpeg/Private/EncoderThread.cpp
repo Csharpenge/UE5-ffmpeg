@@ -3,6 +3,12 @@
 
 #include "EncoderThread.h"
 
+#if PLATFORM_WINDOWS
+#include "Windows/AllowWindowsPlatformTypes.h"
+#include <objbase.h>
+#include "Windows/HideWindowsPlatformTypes.h"
+#endif
+
 
 FEncoderThread::FEncoderThread()
 {
@@ -10,29 +16,34 @@ FEncoderThread::FEncoderThread()
 
 FEncoderThread::~FEncoderThread()
 {
-	if (audio_queue)
-	{
-		audio_queue->RemoveFromRoot();
-		audio_queue->ConditionalBeginDestroy();
-		audio_queue->BeginDestroy();
-	}
-	if (videobuffer_queue)
-	{
-		videobuffer_queue->RemoveFromRoot();
-		videobuffer_queue->ConditionalBeginDestroy();
-		videobuffer_queue->BeginDestroy();
-	}
-	if (audio_time_queue)
-	{
-		audio_time_queue->RemoveFromRoot();
-		audio_time_queue->ConditionalBeginDestroy();
-		audio_time_queue->BeginDestroy();
-	}
+	// The queues are plain C++ objects owned by this thread object. They are not UObjects anymore:
+	// manually calling ConditionalBeginDestroy() + BeginDestroy() on a UObject removed it from the
+	// UObject hash twice and made UE 5.8 fatal with "hash itself may be corrupted".
+	delete audio_queue;
+	audio_queue = nullptr;
+
+	delete videobuffer_queue;
+	videobuffer_queue = nullptr;
+
+	delete audio_time_queue;
+	audio_time_queue = nullptr;
 }
 
 bool FEncoderThread::Init()
 {
 	counter = 0;
+
+#if PLATFORM_WINDOWS
+	// The MediaFoundation encoder (h264_mf) refuses to work in an STA apartment and the UE game
+	// thread is STA, so every encode call runs on this MTA initialized thread instead.
+	const HRESULT ComResult = ::CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+	bComInitialized = SUCCEEDED(ComResult);
+	if (!bComInitialized)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("UFFmpeg: encoder thread could not initialize COM as MTA (0x%08x); h264_mf may be unavailable."), static_cast<uint32>(ComResult));
+	}
+#endif
+
 	return true;
 }
 
@@ -52,23 +63,26 @@ void FEncoderThread::Stop()
 
 void FEncoderThread::Exit()
 {
-	
+#if PLATFORM_WINDOWS
+	if (bComInitialized)
+	{
+		::CoUninitialize();
+		bComInitialized = false;
+	}
+#endif
 }
 
 void FEncoderThread::CreateQueue(int video_data_size, int auido_data_size, int video_data_num, int auido_data_num)
 {
-	videobuffer_queue = NewObject<UCircleQueue>();
-	videobuffer_queue->AddToRoot();
+	videobuffer_queue = new UCircleQueue();
 	videobuffer_queue->Init(video_data_num, video_data_size);
 	videobuffer_queue->encode_delegate.BindRaw(this, &FEncoderThread::GetBufferData);
 
-	audio_queue = NewObject<UCircleQueue>();
-	audio_queue->AddToRoot();
+	audio_queue = new UCircleQueue();
 	audio_queue->Init(auido_data_num, auido_data_size);
 
 
-	audio_time_queue = NewObject<UCircleQueue>();
-	audio_time_queue->AddToRoot();
+	audio_time_queue = new UCircleQueue();
 	audio_time_queue->Init(auido_data_num, auido_data_num*sizeof(double));
 }
 
@@ -100,7 +114,7 @@ bool FEncoderThread::InsertVideo(uint8* Src)
 
 bool FEncoderThread::InsertAudio(uint8* Src, uint8* time)
 {
-	if (!audio_queue)
+	if (!audio_queue || !audio_time_queue)
 		return false;
 	{
 		FScopeLock ScopeLock(&AudioMutex);
@@ -122,7 +136,10 @@ void FEncoderThread::GetBufferData(uint8* data)
 
 bool FEncoderThread::IsQueneEmpty()
 {
-	return videobuffer_queue->IsEmpty() && audio_queue->IsEmpty() && audio_time_queue->IsEmpty();
+	const bool bVideoEmpty = !videobuffer_queue || videobuffer_queue->IsEmpty();
+	const bool bAudioEmpty = !audio_queue || audio_queue->IsEmpty();
+	const bool bAudioTimeEmpty = !audio_time_queue || audio_time_queue->IsEmpty();
+	return bVideoEmpty && bAudioEmpty && bAudioTimeEmpty;
 }
 
 void FEncoderThread::RunEncode()
@@ -136,7 +153,7 @@ void FEncoderThread::RunEncode()
 
 	{
 		FScopeLock ScopeLock1(&VideoBufferMutex);
-		IsNeedEncode = videobuffer_queue->PrcessEncodeData();
+		IsNeedEncode = videobuffer_queue ? videobuffer_queue->PrcessEncodeData() : false;
 
 		if (IsNeedEncode)
 			EncodeVideo();
@@ -156,7 +173,7 @@ void FEncoderThread::EncodeVideo()
 
 void FEncoderThread::EncodeAudio()
 {
-	if (audio_queue)
+	if (audio_queue && audio_time_queue)
 	{
 		audio_time_queue->PrcessEncodeData();
 		audio_queue->PrcessEncodeData();

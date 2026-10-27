@@ -25,9 +25,11 @@
 #define AVCODEC_V4L2_BUFFERS_H
 
 #include <stdatomic.h>
+#include <stddef.h>
 #include <linux/videodev2.h>
 
-#include "avcodec.h"
+#include "libavutil/frame.h"
+#include "packet.h"
 
 enum V4L2Buffer_status {
     V4L2BUF_AVAILABLE,
@@ -43,8 +45,9 @@ typedef struct V4L2Buffer {
     struct V4L2Context *context;
 
     /* This object is refcounted per-plane, so we need to keep track
-     * of how many context-refs we are holding. */
-    AVBufferRef *context_ref;
+     * of how many context-refs we are holding.
+     * This pointer is a RefStruct reference. */
+    const struct V4L2m2mContext *context_ref;
     atomic_uint context_refcount;
 
     /* keep track of the mmap address and mmap length */
@@ -72,7 +75,7 @@ typedef struct V4L2Buffer {
  * @param[in] buf The V4L2Buffer to get the information from
  *
  * @returns 0 in case of success, AVERROR(EINVAL) if the number of planes is incorrect,
- * AVERROR(ENOMEM) if the AVBufferRef cant be created.
+ * AVERROR(ENOMEM) if the AVBufferRef can't be created.
  */
 int ff_v4l2_buffer_buf_to_avframe(AVFrame *frame, V4L2Buffer *buf);
 
@@ -83,7 +86,7 @@ int ff_v4l2_buffer_buf_to_avframe(AVFrame *frame, V4L2Buffer *buf);
  * @param[in] buf The V4L2Buffer to get the information from
  *
  * @returns 0 in case of success, AVERROR(EINVAL) if the number of planes is incorrect,
- * AVERROR(ENOMEM) if the AVBufferRef cant be created.
+ * AVERROR(ENOMEM) if the AVBufferRef can't be created.
  *
  */
 int ff_v4l2_buffer_buf_to_avpkt(AVPacket *pkt, V4L2Buffer *buf);
@@ -106,7 +109,7 @@ int ff_v4l2_buffer_avpkt_to_buf(const AVPacket *pkt, V4L2Buffer *out);
  *
  * @returns 0 in case of success, a negative AVERROR code otherwise
  */
-int ff_v4l2_buffer_avframe_to_buf(const AVFrame *frame, V4L2Buffer* out);
+int ff_v4l2_buffer_avframe_to_buf(const AVFrame *frame, V4L2Buffer *out);
 
 /**
  * Initializes a V4L2Buffer

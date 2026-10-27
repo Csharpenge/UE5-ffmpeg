@@ -22,9 +22,8 @@
 #ifndef AVFORMAT_MATROSKA_H
 #define AVFORMAT_MATROSKA_H
 
-#include "libavcodec/avcodec.h"
+#include "libavcodec/codec_id.h"
 #include "metadata.h"
-#include "internal.h"
 
 /* EBML version supported */
 #define EBML_VERSION 1
@@ -98,6 +97,11 @@
 #define MATROSKA_ID_TRACKFLAGENABLED 0xB9
 #define MATROSKA_ID_TRACKFLAGDEFAULT 0x88
 #define MATROSKA_ID_TRACKFLAGFORCED 0x55AA
+#define MATROSKA_ID_TRACKFLAGHEARINGIMPAIRED  0x55AB
+#define MATROSKA_ID_TRACKFLAGVISUALIMPAIRED   0x55AC
+#define MATROSKA_ID_TRACKFLAGTEXTDESCRIPTIONS 0x55AD
+#define MATROSKA_ID_TRACKFLAGORIGINAL         0x55AE
+#define MATROSKA_ID_TRACKFLAGCOMMENTARY       0x55AF
 #define MATROSKA_ID_TRACKFLAGLACING 0x9C
 #define MATROSKA_ID_TRACKMINCACHE 0x6DE7
 #define MATROSKA_ID_TRACKMAXCACHE 0x6DF8
@@ -106,6 +110,7 @@
 #define MATROSKA_ID_TRACKCONTENTENCODING 0x6240
 #define MATROSKA_ID_TRACKTIMECODESCALE 0x23314F
 #define MATROSKA_ID_TRACKMAXBLKADDID 0x55EE
+#define MATROSKA_ID_TRACKBLKADDMAPPING 0x41E4
 
 /* IDs in the trackvideo master */
 #define MATROSKA_ID_VIDEOFRAMERATE 0x2383E3
@@ -183,6 +188,12 @@
 #define MATROSKA_ID_ENCODINGSIGHASHALGO 0x47E6
 #define MATROSKA_ID_ENCODINGSIGKEYID 0x47E4
 #define MATROSKA_ID_ENCODINGSIGNATURE 0x47E3
+
+/* IDs in the block addition mapping master */
+#define MATROSKA_ID_BLKADDIDVALUE 0x41F0
+#define MATROSKA_ID_BLKADDIDNAME 0x41A4
+#define MATROSKA_ID_BLKADDIDTYPE 0x41E7
+#define MATROSKA_ID_BLKADDIDEXTRADATA 0x41ED
 
 /* ID in the cues master */
 #define MATROSKA_ID_POINTENTRY 0xBB
@@ -271,6 +282,7 @@ typedef enum {
   MATROSKA_TRACK_TYPE_COMPLEX  = 0x3,
   MATROSKA_TRACK_TYPE_LOGO     = 0x10,
   MATROSKA_TRACK_TYPE_SUBTITLE = 0x11,
+  MATROSKA_TRACK_TYPE_BUTTONS  = 0x12,
   MATROSKA_TRACK_TYPE_CONTROL  = 0x20,
   MATROSKA_TRACK_TYPE_METADATA = 0x21,
 } MatroskaTrackType;
@@ -285,13 +297,13 @@ typedef enum {
 typedef enum {
     MATROSKA_VIDEO_INTERLACE_FLAG_UNDETERMINED = 0,
     MATROSKA_VIDEO_INTERLACE_FLAG_INTERLACED   = 1,
-    MATROSKA_VIDEO_INTERLACE_FLAG_PROGRESSIVE  = 2
+    MATROSKA_VIDEO_INTERLACE_FLAG_PROGRESSIVE  = 2,
 } MatroskaVideoInterlaceFlag;
 
 typedef enum {
     MATROSKA_VIDEO_FIELDORDER_PROGRESSIVE  = 0,
-    MATROSKA_VIDEO_FIELDORDER_UNDETERMINED = 2,
     MATROSKA_VIDEO_FIELDORDER_TT           = 1,
+    MATROSKA_VIDEO_FIELDORDER_UNDETERMINED = 2,
     MATROSKA_VIDEO_FIELDORDER_BB           = 6,
     MATROSKA_VIDEO_FIELDORDER_TB           = 9,
     MATROSKA_VIDEO_FIELDORDER_BT           = 14,
@@ -345,6 +357,18 @@ typedef enum {
   MATROSKA_VIDEO_PROJECTION_TYPE_MESH               = 3,
 } MatroskaVideoProjectionType;
 
+typedef enum {
+  MATROSKA_BLOCK_ADD_ID_TYPE_DEFAULT                = 0,
+  MATROSKA_BLOCK_ADD_ID_TYPE_OPAQUE                 = 1,
+  MATROSKA_BLOCK_ADD_ID_TYPE_ITU_T_T35              = 4,
+  MATROSKA_BLOCK_ADD_ID_TYPE_DVCC                   = 0x64766343, // MKBETAG('d','v','c','C')
+  MATROSKA_BLOCK_ADD_ID_TYPE_DVVC                   = 0x64767643, // MKBETAG('d','v','v','C')
+  MATROSKA_BLOCK_ADD_ID_TYPE_HVCE                   = 0x68766345, // MKBETAG('h','v','c','E')
+} MatroskaBlockAddIDType;
+
+#define MATROSKA_BLOCK_ADD_ID_OPAQUE 1
+#define MATROSKA_BLOCK_ADD_ID_ITU_T_T35 4
+
 /*
  * Matroska Codec IDs, strings
  */
@@ -360,11 +384,46 @@ typedef struct CodecTags{
 #define MATROSKA_VIDEO_STEREO_PLANE_COUNT  3
 
 extern const CodecTags ff_mkv_codec_tags[];
-extern const CodecMime ff_mkv_mime_tags[];
-extern const CodecMime ff_mkv_image_mime_tags[];
+extern const CodecTags ff_webm_codec_tags[];
 extern const AVMetadataConv ff_mkv_metadata_conv[];
+
+/* The following macro contains all the information about which
+ * MATROSKA_VIDEO_STEREOMODE_TYPE_* correspond to which AVStereo3D
+ * structures and also the relevant horizontal/vertical divisors
+ * as well as WebM compatibility.
+ *
+ * MAP and MKV_ONLY are macros to be provided by the user.
+ * MAP(MatroskaVideoStereoModeType, AVStereo3DType, AV_STEREO3D_FLAG_*,
+ *     HALF_WIDTH, HALF_HEIGHT, WebM-compatibility)
+ * is for the stereo modes that have a Stereo3D counterpart.
+ * MKV_ONLY(MatroskaVideoStereoModeType, HALF_WIDTH, HALF_HEIGHT, WebM)
+ * is for those that don't have a Stereo3D counterpart.
+ * */
+#define STEREOMODE_STEREO3D_MAPPING(MAP, MKV_ONLY)                                            \
+    MAP(MATROSKA_VIDEO_STEREOMODE_TYPE_MONO, AV_STEREO3D_2D, 0, 0, 0, 1)                      \
+    MAP(MATROSKA_VIDEO_STEREOMODE_TYPE_LEFT_RIGHT, AV_STEREO3D_SIDEBYSIDE, 0, 1, 0, 1)        \
+    MAP(MATROSKA_VIDEO_STEREOMODE_TYPE_BOTTOM_TOP, AV_STEREO3D_TOPBOTTOM,                     \
+        AV_STEREO3D_FLAG_INVERT, 0, 1, 1)                                                     \
+    MAP(MATROSKA_VIDEO_STEREOMODE_TYPE_TOP_BOTTOM, AV_STEREO3D_TOPBOTTOM,  0, 0, 1, 1)        \
+    MAP(MATROSKA_VIDEO_STEREOMODE_TYPE_CHECKERBOARD_RL, AV_STEREO3D_CHECKERBOARD,             \
+        AV_STEREO3D_FLAG_INVERT, 0, 0, 0)                                                     \
+    MAP(MATROSKA_VIDEO_STEREOMODE_TYPE_CHECKERBOARD_LR, AV_STEREO3D_CHECKERBOARD, 0, 0, 0, 0) \
+    MAP(MATROSKA_VIDEO_STEREOMODE_TYPE_ROW_INTERLEAVED_RL, AV_STEREO3D_LINES,                 \
+        AV_STEREO3D_FLAG_INVERT, 0, 1, 0)                                                     \
+    MAP(MATROSKA_VIDEO_STEREOMODE_TYPE_ROW_INTERLEAVED_LR, AV_STEREO3D_LINES, 0, 0, 1, 0)     \
+    MAP(MATROSKA_VIDEO_STEREOMODE_TYPE_COL_INTERLEAVED_RL, AV_STEREO3D_COLUMNS,               \
+        AV_STEREO3D_FLAG_INVERT, 1, 0, 0)                                                     \
+    MAP(MATROSKA_VIDEO_STEREOMODE_TYPE_COL_INTERLEAVED_LR, AV_STEREO3D_COLUMNS, 0, 1, 0, 0)   \
+    MKV_ONLY(MATROSKA_VIDEO_STEREOMODE_TYPE_ANAGLYPH_CYAN_RED, 0, 0, 0)                       \
+    MAP(MATROSKA_VIDEO_STEREOMODE_TYPE_RIGHT_LEFT, AV_STEREO3D_SIDEBYSIDE,                    \
+        AV_STEREO3D_FLAG_INVERT, 1, 0, 1)                                                     \
+    MKV_ONLY(MATROSKA_VIDEO_STEREOMODE_TYPE_ANAGLYPH_GREEN_MAG, 0, 0, 0)                      \
+    MAP(MATROSKA_VIDEO_STEREOMODE_TYPE_BOTH_EYES_BLOCK_LR, AV_STEREO3D_FRAMESEQUENCE,         \
+        0, 0, 0, 0)                                                                           \
+    MAP(MATROSKA_VIDEO_STEREOMODE_TYPE_BOTH_EYES_BLOCK_RL, AV_STEREO3D_FRAMESEQUENCE,         \
+        AV_STEREO3D_FLAG_INVERT, 0, 0, 0)
+
 extern const char * const ff_matroska_video_stereo_mode[MATROSKA_VIDEO_STEREOMODE_TYPE_NB];
-extern const char * const ff_matroska_video_stereo_plane[MATROSKA_VIDEO_STEREO_PLANE_COUNT];
 
 /* AVStream Metadata tag keys for WebM Dash Manifest */
 #define INITIALIZATION_RANGE "webm_dash_manifest_initialization_range"
@@ -378,6 +437,7 @@ extern const char * const ff_matroska_video_stereo_plane[MATROSKA_VIDEO_STEREO_P
 #define TRACK_NUMBER "webm_dash_manifest_track_number"
 #define CODEC_PRIVATE_SIZE "webm_dash_manifest_codec_priv_size"
 
-int ff_mkv_stereo3d_conv(AVStream *st, MatroskaVideoStereoModeType stereo_mode);
+#define DVCC_DVVC_BLOCK_TYPE_NAME "Dolby Vision configuration"
+#define HVCE_BLOCK_TYPE_NAME      "HEVC enhancement-layer configuration"
 
 #endif /* AVFORMAT_MATROSKA_H */

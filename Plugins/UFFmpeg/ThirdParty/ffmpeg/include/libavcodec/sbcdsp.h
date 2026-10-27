@@ -32,8 +32,11 @@
 #ifndef AVCODEC_SBCDSP_H
 #define AVCODEC_SBCDSP_H
 
+#include <stdint.h>
+
+#include "libavutil/mem_internal.h"
+
 #include "sbc.h"
-#include "sbcdsp_data.h"
 
 #define SCALE_OUT_BITS 15
 #define SBC_X_BUFFER_SIZE 328
@@ -50,11 +53,11 @@ struct sbc_dsp_context {
     /* Polyphase analysis filter for 4 subbands configuration,
      * it handles "increment" blocks at once */
     void (*sbc_analyze_4s)(SBCDSPContext *s,
-                           int16_t *x, int32_t *out, int out_stride);
+                           const int16_t *x, int32_t *out, int out_stride);
     /* Polyphase analysis filter for 8 subbands configuration,
      * it handles "increment" blocks at once */
     void (*sbc_analyze_8s)(SBCDSPContext *s,
-                           int16_t *x, int32_t *out, int out_stride);
+                           const int16_t *x, int32_t *out, int out_stride);
     /* Process input data (deinterleave, endian conversion, reordering),
      * depending on the number of subbands and input data byte order */
     int (*sbc_enc_process_input_4s)(int position, const uint8_t *pcm,
@@ -64,7 +67,7 @@ struct sbc_dsp_context {
                                     int16_t X[2][SBC_X_BUFFER_SIZE],
                                     int nsamples, int nchannels);
     /* Scale factors calculation */
-    void (*sbc_calc_scalefactors)(int32_t sb_sample_f[16][2][8],
+    void (*sbc_calc_scalefactors)(const int32_t sb_sample_f[16][2][8],
                                   uint32_t scale_factor[2][8],
                                   int blocks, int channels, int subbands);
     /* Scale factors calculation with joint stereo support */

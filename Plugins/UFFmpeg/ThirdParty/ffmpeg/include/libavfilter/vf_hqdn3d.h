@@ -31,11 +31,13 @@
 typedef struct HQDN3DContext {
     const AVClass *class;
     int16_t *coefs[4];
-    uint16_t *line;
+    uint16_t *line[3];
     uint16_t *frame_prev[3];
     double strength[4];
     int hsub, vsub;
     int depth;
+    int width, height;
+    enum AVPixelFormat format;
     void (*denoise_row[17])(uint8_t *src, uint8_t *dst, uint16_t *line_ant, uint16_t *frame_ant, ptrdiff_t w, int16_t *spatial, int16_t *temporal);
 } HQDN3DContext;
 

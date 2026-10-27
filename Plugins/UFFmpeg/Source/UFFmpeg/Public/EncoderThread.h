@@ -47,11 +47,14 @@ private:
 
 private:
 
-	UCircleQueue* videobuffer_queue;
-	UCircleQueue* audio_queue;
-	UCircleQueue* audio_time_queue;
+	UCircleQueue* videobuffer_queue = nullptr;
+	UCircleQueue* audio_queue = nullptr;
+	UCircleQueue* audio_time_queue = nullptr;
 
 	int counter = 0;
 
 	uint8* video_data=nullptr;
+
+	/** True when this thread initialized COM as MTA (required by the MediaFoundation encoder). */
+	bool bComInitialized = false;
 };

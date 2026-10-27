@@ -23,9 +23,8 @@
 #ifndef AVCODEC_HAP_H
 #define AVCODEC_HAP_H
 
+#include <stddef.h>
 #include <stdint.h>
-
-#include "libavutil/opt.h"
 
 #include "bytestream.h"
 #include "texturedsp.h"
@@ -52,19 +51,19 @@ enum HapSectionType {
 
 typedef struct HapChunk {
     enum HapCompressor compressor;
-    int compressed_offset;
+    uint32_t compressed_offset;
     size_t compressed_size;
     int uncompressed_offset;
     size_t uncompressed_size;
 } HapChunk;
 
 typedef struct HapContext {
-    AVClass *class;
+    const struct AVClass *class;
 
-    TextureDSPContext dxtc;
     GetByteContext gbc;
 
-    enum HapTextureFormat opt_tex_fmt; /* Texture type (encoder only) */
+    /* enum HapTextureFormat, use int for AVOption */
+    int opt_tex_fmt; /* Texture type (encoder only) */
     int opt_chunk_count; /* User-requested chunk count (encoder only) */
     int opt_compressor; /* User-requested compressor (encoder only) */
 
@@ -72,23 +71,16 @@ typedef struct HapContext {
     HapChunk *chunks;
     int *chunk_results;      /* Results from threaded operations */
 
-    int tex_rat;             /* Compression ratio */
-    int tex_rat2;             /* Compression ratio of the second texture */
-    const uint8_t *tex_data; /* Compressed texture */
     uint8_t *tex_buf;        /* Buffer for compressed texture */
     size_t tex_size;         /* Size of the compressed texture */
 
     size_t max_snappy;       /* Maximum compressed size for snappy buffer */
 
-    int slice_count;         /* Number of slices for threaded operations */
-
     int texture_count;      /* 2 for HAQA, 1 for other version */
     int texture_section_size; /* size of the part of the texture section (for HAPQA) */
-    int uncompress_pix_size; /* nb of byte / pixel for the target picture */
 
-    /* Pointer to the selected compress or decompress function */
-    int (*tex_fun)(uint8_t *dst, ptrdiff_t stride, const uint8_t *block);
-    int (*tex_fun2)(uint8_t *dst, ptrdiff_t stride, const uint8_t *block);
+    TextureDSPThreadContext enc;
+    TextureDSPThreadContext dec[2];
 } HapContext;
 
 /*
